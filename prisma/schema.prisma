@@ -7,3 +7,19 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+
+model Trip {
+  id        String   @id @default(cuid())
+  location  String
+  startDate DateTime
+  endDate   DateTime
+  theme     String
+  provider  String?
+  model     String?
+  itinerary Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt(sort: Desc)])
+  @@index([location])
+}
