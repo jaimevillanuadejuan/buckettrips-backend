@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { isTripItinerary } from './validators/is-trip-itinerary';
@@ -28,7 +27,7 @@ export class TripsService {
         theme: payload.theme,
         provider: payload.provider?.trim() || null,
         model: payload.model?.trim() || null,
-        itinerary: payload.itinerary as Prisma.InputJsonValue,
+        itinerary: payload.itinerary as any,
       },
       select: {
         id: true,

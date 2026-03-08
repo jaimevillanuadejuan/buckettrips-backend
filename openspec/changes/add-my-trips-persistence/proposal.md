@@ -12,8 +12,10 @@ The current frontend can generate and refine itineraries, but persistence requir
   - `DELETE /api/trips/:tripId`
 - Validate incoming save payloads with DTO rules and itinerary shape guards.
 - Keep backend CORS and API prefix compatible with current frontend (`http://localhost:3000` by default).
+- Add a local Docker Compose workflow (API + Postgres) for reproducible setup.
 
 ## Impact
 - Enables frontend `Save Trip` flow with real database persistence.
 - Supports `my-trips` list/detail/delete experiences in a separate frontend counterpart change.
 - Keeps MVP intentionally simple (single portfolio user, no authentication).
+- Improves local onboarding by offering one-command startup with Docker Desktop.

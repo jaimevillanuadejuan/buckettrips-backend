@@ -23,3 +23,8 @@
 - [x] 5.1 Run `npm run prisma:generate`
 - [x] 5.2 Run `npm run build`
 - [ ] 5.3 Validate frontend integration against backend endpoints
+
+## 6. Local Docker Workflow
+- [x] 6.1 Add `Dockerfile` for API image build/runtime
+- [x] 6.2 Add `docker-compose.yml` for API + Postgres local stack
+- [x] 6.3 Document Docker startup/shutdown commands in `README.md`

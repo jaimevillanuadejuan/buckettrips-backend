@@ -57,6 +57,29 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Run with Docker Desktop (API: 8080, Postgres: 5432)
+
+```bash
+# from project root
+docker compose up --build
+```
+
+This starts:
+- API at `http://localhost:8080`
+- Postgres at `localhost:5432` (`buckettrips` / `buckettrips` / `buckettrips`)
+
+To stop containers:
+
+```bash
+docker compose down
+```
+
+To stop and delete DB data volume:
+
+```bash
+docker compose down -v
+```
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

@@ -56,3 +56,11 @@ The system SHALL keep runtime conventions that match the current local frontend 
 - **THEN** it listens on port `8080`
 - **AND** serves routes under `/api`
 - **AND** allows CORS from `http://localhost:3000` unless overridden by `FRONTEND_URL`
+
+### Requirement: Support Local Docker Startup For Backend Stack
+The system SHALL provide a Docker-based local workflow that starts API and PostgreSQL together.
+
+#### Scenario: Start backend stack with Docker Compose
+- **WHEN** a developer runs `docker compose up --build` from the project root
+- **THEN** a Postgres service is available on `localhost:5432`
+- **AND** the API service is available on `http://localhost:8080`
