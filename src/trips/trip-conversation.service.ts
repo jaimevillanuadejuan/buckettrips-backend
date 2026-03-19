@@ -51,7 +51,7 @@ export interface ContextualQuestion {
 
 const DEFAULT_OPENROUTER_MODEL = 'openrouter/free';
 const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_TIMEOUT_MS = 120_000;
+const OPENROUTER_TIMEOUT_MS = 20_000;
 const MAX_FOLLOW_UP_ANSWERS = 8;
 const CONVERSATION_STEPS: ConversationStep[] = [
   'destination',
@@ -138,9 +138,49 @@ function isConversationStep(value: unknown): value is ConversationStep {
   );
 }
 
+// Phrases that indicate the model returned a robotic/error-like response
+// despite being told not to. We replace these with a natural fallback.
+const ROBOTIC_PHRASES = [
+  'i hit a snag',
+  'i encountered',
+  'i apologize',
+  'i\'m sorry, but',
+  'i am sorry',
+  'i\'m unable',
+  'i cannot',
+  'as an ai',
+  'i\'m afraid',
+  'unfortunately',
+  'i\'m having trouble',
+  'something went wrong',
+  'could you say that again',
+];
+
+const SMALL_TALK_FALLBACKS = [
+  "Hey! So where are we headed — got a destination in mind?",
+  "Doing well, thanks! So, where are we thinking for this trip?",
+  "Good! Ready when you are — where do you want to go?",
+];
+
+function isRoboticReply(text: string): boolean {
+  const lower = text.toLowerCase();
+  return ROBOTIC_PHRASES.some((phrase) => lower.includes(phrase));
+}
+
+function naturalFallback(utterance: string): string {
+  const lower = utterance.toLowerCase().trim();
+  const isGreeting =
+    /^(hey|hi|hello|what'?s up|how'?s it going|how are you|good morning|good evening|yo)\b/.test(lower);
+  if (isGreeting) {
+    return SMALL_TALK_FALLBACKS[Math.floor(Math.random() * SMALL_TALK_FALLBACKS.length)];
+  }
+  return "Sorry, I missed that — could you say it again?";
+}
+
 function normalizeConversationResponse(
   payload: unknown,
   fallbackStep: ConversationStep,
+  utterance: string = '',
 ): {
   agentReply: string;
   nextStep: ConversationStep;
@@ -148,16 +188,22 @@ function normalizeConversationResponse(
 } {
   if (!isObject(payload)) {
     return {
-      agentReply: 'Could you say that again?',
+      agentReply: naturalFallback(utterance),
       nextStep: fallbackStep,
       tripContextUpdates: {},
     };
   }
 
-  const agentReply =
+  let agentReply =
     typeof payload.agentReply === 'string' && payload.agentReply.trim().length > 0
       ? payload.agentReply.trim()
-      : 'Could you say that again?';
+      : naturalFallback(utterance);
+
+  // Safety net: if the model returned a robotic phrase despite instructions, replace it
+  if (isRoboticReply(agentReply)) {
+    agentReply = naturalFallback(utterance);
+  }
+
   const nextStep = isConversationStep(payload.nextStep)
     ? payload.nextStep
     : fallbackStep;
@@ -426,25 +472,48 @@ export class TripConversationService {
       : 'destination';
 
     const systemPrompt = [
-      'You are a warm, natural-sounding travel advisor speaking in short, conversational turns.',
-      'Guide a structured trip intake through the steps: destination, duration, companions, budget, season, pace, interests, exclusions, accommodation, contextual, confirm.',
-      'You MUST output valid JSON only, with no markdown.',
-      'Always return: agentReply (string), nextStep (one of the steps), tripContextUpdates (object).',
-      'Update only fields you are confident about based on the user utterance and existing context.',
-      'If the user already provided multiple details, you may advance multiple steps, but keep it natural.',
-      'If the user only makes small talk, respond briefly and steer toward trip planning.',
-      'If the destination is missing, ask where they want to go.',
+      'You are a warm, witty travel companion having a completely natural conversation to help someone plan a trip.',
+      'You MUST always output valid JSON only — no markdown, no prose outside the JSON.',
+      'Always return exactly this shape: { "agentReply": string, "nextStep": string, "tripContextUpdates": object }.',
+      '',
+      'SMALL TALK RULE (highest priority):',
+      'If the user greets you, asks how you are, or makes ANY small talk with no trip details, respond like a real person would — warm, casual, brief — then naturally pivot to trip planning.',
+      'NEVER say things like "I hit a snag", "I encountered an issue", "I\'m sorry", "I apologize", or any robotic/error-like phrase.',
+      'Small talk examples:',
+      '"hey" → agentReply: "Hey! Ready to plan something good — where are we headed?"',
+      '"hey how\'s it going" → agentReply: "Pretty good, thanks! So, where are we thinking for this trip?"',
+      '"hi there" → agentReply: "Hey! Got a destination in mind, or are we still dreaming?"',
+      '"what\'s up" → agentReply: "Not much — just waiting to hear where you want to go. What\'s the plan?"',
+      '"how are you" → agentReply: "Doing well! More importantly — where are we going? Got somewhere in mind?"',
+      '',
+      'CONTEXT EXTRACTION RULE (critical):',
+      'Scan the ENTIRE conversation history AND the current utterance for ANY trip details — destination, duration, companions, budget, dates, interests.',
+      'Example: "I want to go to Ibiza with friends for 2 weeks" → extract destination=Ibiza, companions.type=friends_small, duration.min=14, duration.max=14.',
+      'Example: "just me and my partner" → companions.type=couple, companions.count=2.',
+      'Example: "with a group of friends" → companions.type=friends_small.',
+      'If the user provided multiple details, advance nextStep past all resolved fields to the first unresolved one.',
+      '',
+      'REPLY STYLE:',
+      'Keep agentReply to 1-2 sentences max. Acknowledge what was captured, then ask the next missing thing naturally.',
       'When you reach confirm step, ask for exact start/end dates in YYYY-MM-DD and set travel_dates.exact_start/exact_end when given.',
-      'Use allowed enum values:',
+      '',
+      'Allowed enum values —',
       'companions.type: solo | couple | friends_small | friends_group | family_with_kids | work_trip',
       'budget.tier: shoestring | thoughtful | comfortable | premium | no_limit',
-      'travel_dates.season: spring | summer | autumn | winter | shoulder, plus optional moods as a comma-separated string',
-      'interests/exclusions: use the most relevant from the provided lists if mentioned.',
-    ].join(' ');
+      'travel_dates.season: spring | summer | autumn | winter | shoulder (plus optional moods as comma-separated string)',
+    ].join('\n');
+
+    const historyLines = (payload.conversationHistory ?? [])
+      .map((t) => `${t.role === 'user' ? 'User' : 'Agent'}: ${t.text}`)
+      .join('\n');
 
     const userPrompt = `Current step: ${step}
 User said: """${payload.lastUserUtterance}"""
-Existing trip context JSON:
+
+Full conversation so far (use this to extract ANY context clues you may have missed):
+${historyLines || '(no prior turns)'}
+
+Existing trip context JSON (already extracted fields — do NOT regress these):
 ${JSON.stringify(payload.tripContext)}
 
 Allowed interests:
@@ -537,7 +606,7 @@ Return JSON only with shape:
         // keep string
       }
 
-      return normalizeConversationResponse(parsed, step);
+      return normalizeConversationResponse(parsed, step, payload.lastUserUtterance);
     } catch (error) {
       if (
         error instanceof BadRequestException ||

@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsObject, IsString } from 'class-validator';
+import { IsArray, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
 
 export class ConversationDto {
   @IsObject()
@@ -11,4 +11,8 @@ export class ConversationDto {
   @IsString()
   @IsNotEmpty()
   lastUserUtterance!: string;
+
+  @IsOptional()
+  @IsArray()
+  conversationHistory?: Array<{ role: 'user' | 'agent'; text: string }>;
 }
