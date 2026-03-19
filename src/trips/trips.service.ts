@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+﻿import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { isTripItinerary } from './validators/is-trip-itinerary';
@@ -16,7 +21,9 @@ export class TripsService {
     const endDate = new Date(payload.endDate);
 
     if (startDate > endDate) {
-      throw new BadRequestException('startDate must be before or equal to endDate');
+      throw new BadRequestException(
+        'startDate must be before or equal to endDate',
+      );
     }
 
     const created = await this.prisma.trip.create({
@@ -27,7 +34,7 @@ export class TripsService {
         theme: payload.theme,
         provider: payload.provider?.trim() || null,
         model: payload.model?.trim() || null,
-        itinerary: payload.itinerary as any,
+        itinerary: payload.itinerary as Prisma.InputJsonValue,
       },
       select: {
         id: true,
