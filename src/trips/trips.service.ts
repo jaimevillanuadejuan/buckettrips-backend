@@ -1,5 +1,6 @@
 ﻿import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -26,32 +27,27 @@ export class TripsService {
       );
     }
 
-    const created = await this.prisma.trip.create({
+    return this.prisma.trip.create({
       data: {
+        profileId: payload.profileId!,
         location: payload.location.trim(),
         startDate,
         endDate,
-        theme: payload.theme,
         provider: payload.provider?.trim() || null,
         model: payload.model?.trim() || null,
         itinerary: payload.itinerary as Prisma.InputJsonValue,
       },
-      select: {
-        id: true,
-        createdAt: true,
-      },
+      select: { id: true, createdAt: true },
     });
-
-    return created;
   }
 
-  async findAll() {
+  async findAll(profileId: string) {
     return this.prisma.trip.findMany({
+      where: { profileId },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
         location: true,
-        theme: true,
         startDate: true,
         endDate: true,
         provider: true,
@@ -61,30 +57,24 @@ export class TripsService {
     });
   }
 
-  async findOne(id: string) {
-    const trip = await this.prisma.trip.findUnique({
-      where: { id },
-    });
+  async findOne(id: string, profileId: string) {
+    const trip = await this.prisma.trip.findUnique({ where: { id } });
 
-    if (!trip) {
-      throw new NotFoundException('Trip not found');
-    }
+    if (!trip) throw new NotFoundException('Trip not found');
+    if (trip.profileId !== profileId) throw new ForbiddenException();
 
     return trip;
   }
 
-  async remove(id: string) {
-    const existing = await this.prisma.trip.findUnique({
+  async remove(id: string, profileId: string) {
+    const trip = await this.prisma.trip.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, profileId: true },
     });
 
-    if (!existing) {
-      throw new NotFoundException('Trip not found');
-    }
+    if (!trip) throw new NotFoundException('Trip not found');
+    if (trip.profileId !== profileId) throw new ForbiddenException();
 
-    await this.prisma.trip.delete({
-      where: { id },
-    });
+    await this.prisma.trip.delete({ where: { id } });
   }
 }

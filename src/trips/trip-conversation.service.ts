@@ -7,7 +7,7 @@
 import { ConfirmTripDto } from './dto/confirm-trip.dto';
 import { ConversationDto } from './dto/conversation.dto';
 
-type TripTheme = 'nature' | 'historic';
+
 type ConversationStep =
   | 'destination'
   | 'duration'
@@ -299,20 +299,6 @@ function getPathStringArray(
     .filter((entry) => entry.length > 0);
 }
 
-function normalizeTheme(interests: string[]): TripTheme {
-  const joined = interests.join(' ').toLowerCase();
-
-  if (
-    joined.includes('ruins') ||
-    joined.includes('temple') ||
-    joined.includes('art') ||
-    joined.includes('museum')
-  ) {
-    return 'historic';
-  }
-
-  return 'nature';
-}
 
 @Injectable()
 export class TripConversationService {
@@ -368,96 +354,99 @@ export class TripConversationService {
     };
   }
 
-  generateContextualQuestions(tripContext: Record<string, unknown>) {
-    const interests = getPathStringArray(tripContext, ['interests']);
-    const exclusions = getPathStringArray(tripContext, ['exclusions']);
-    const companionsType = getPathString(tripContext, [
-      'companions',
-      'type',
-    ]).toLowerCase();
-
-    const questions: ContextualQuestion[] = [];
-
-    if (interests.some((entry) => entry.toLowerCase().includes('temple'))) {
-      questions.push({
-        id: 'temple_guided_or_solo',
-        question:
-          'Do you want your temple-complex day with a guide, or would you rather explore on your own?',
-        answerType: 'a_b',
-        options: ['Guided', 'Solo'],
-        whyItMatters:
-          'Changes pacing, route complexity, and depth of historical context.',
-      });
+  async generateContextualQuestions(
+    tripContext: Record<string, unknown>,
+    conversationHistory?: Array<{ role: 'user' | 'agent'; text: string }>,
+  ) {
+    const apiKey = process.env.GROQ_API_KEY?.trim();
+    if (!apiKey) {
+      throw new ServiceUnavailableException('Missing GROQ_API_KEY server configuration');
     }
 
-    if (interests.some((entry) => entry.toLowerCase().includes('trek'))) {
-      questions.push({
-        id: 'trek_guided_level',
-        question:
-          'Would you prefer an easy independent trek or a guided moderate route?',
-        answerType: 'a_b',
-        options: ['Easy independent', 'Guided moderate'],
-        whyItMatters: 'Aligns activity difficulty with safety and comfort.',
+    const historyLines = (conversationHistory ?? [])
+      .map((t) => `${t.role === 'user' ? 'User' : 'Agent'}: ${t.text}`)
+      .join('\n');
+
+    const systemPrompt = [
+      'You are a sharp, warm travel advisor reviewing a trip profile to decide what — if anything — is still worth asking.',
+      'Your job is to generate 1 to 3 highly specific, personalized follow-up questions based ONLY on genuine gaps or ambiguities in the trip context.',
+      'Rules:',
+      '- Read the full conversation history and trip context carefully.',
+      '- NEVER ask about something the user already mentioned, even indirectly.',
+      '- NEVER ask generic scripted questions like "do you want a free day?" or "do you prefer fewer transfers?".',
+      '- Each question must be directly tied to something specific in their trip — a place they named, a preference they hinted at, a tension in their choices.',
+      '- If the context is already rich and complete, return fewer questions or even zero.',
+      '- Questions should sound like a real person asking, not a form.',
+      '- Output valid JSON only. No markdown, no prose outside the JSON.',
+      'Return this exact shape: { "questions": [ { "id": "string", "question": "string", "answerType": "yes_no | a_b | free_text", "options": ["string"] | null, "whyItMatters": "string" } ] }',
+    ].join('\n');
+
+    const userPrompt = `Trip context:
+${JSON.stringify(tripContext, null, 2)}
+
+Full conversation so far:
+${historyLines || '(none)'}
+
+Based on the above, what — if anything — is genuinely still unclear or worth personalizing further?
+Return 1-3 questions max. If nothing meaningful is missing, return an empty array.`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(GROQ_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          temperature: 0.4,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
+        signal: controller.signal,
+        cache: 'no-store',
       });
+
+      const json = (await res.json()) as OpenRouterErrorPayload | OpenRouterSuccessPayload;
+
+      if (!res.ok) {
+        const msg = 'error' in json && (json as OpenRouterErrorPayload).error?.message
+          ? (json as OpenRouterErrorPayload).error!.message
+          : 'Groq request failed';
+        throw new ServiceUnavailableException(`Groq API error: ${msg}`);
+      }
+
+      const rawText = extractOpenRouterText(json as OpenRouterSuccessPayload);
+      if (!rawText) throw new ServiceUnavailableException('No response from Groq');
+
+      const cleaned = stripCodeFence(rawText);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        return { questions: [] };
+      }
+
+      if (
+        isObject(parsed) &&
+        Array.isArray(parsed.questions)
+      ) {
+        return { questions: parsed.questions };
+      }
+
+      return { questions: [] };
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException || error instanceof GatewayTimeoutException) throw error;
+      if (error instanceof Error && error.name === 'AbortError') throw new GatewayTimeoutException('Contextual questions request timed out');
+      throw new ServiceUnavailableException('Failed to generate contextual questions');
+    } finally {
+      clearTimeout(timeout);
     }
-
-    if (
-      interests.some((entry) => entry.toLowerCase().includes('street food'))
-    ) {
-      questions.push({
-        id: 'food_spice_tolerance',
-        question:
-          'Any dietary restrictions or spice limits I should design around?',
-        answerType: 'free_text',
-        whyItMatters:
-          'Prevents bad food matches and improves dining confidence.',
-      });
-    }
-
-    if (exclusions.some((entry) => entry.toLowerCase().includes('crowd'))) {
-      questions.push({
-        id: 'crowd_avoidance_time',
-        question:
-          'Are you comfortable starting early to avoid crowds at priority stops?',
-        answerType: 'yes_no',
-        options: ['Yes', 'No'],
-        whyItMatters: 'Determines timing strategy for high-demand landmarks.',
-      });
-    }
-
-    if (companionsType.includes('family')) {
-      questions.push({
-        id: 'family_rest_balance',
-        question:
-          'Would you like one low-stimulation rest block each day for kids?',
-        answerType: 'yes_no',
-        options: ['Yes', 'No'],
-        whyItMatters: 'Prevents over-packed days for family travelers.',
-      });
-    }
-
-    const fallback: ContextualQuestion[] = [
-      {
-        id: 'free_day_mid_trip',
-        question:
-          'Do you want one full unplanned day in the middle of the trip?',
-        answerType: 'yes_no',
-        options: ['Yes', 'No'],
-        whyItMatters: 'Adds flexibility and prevents schedule fatigue.',
-      },
-      {
-        id: 'transport_preference',
-        question:
-          'Do you prefer minimal transfers even if total travel time is longer?',
-        answerType: 'yes_no',
-        options: ['Yes', 'No'],
-        whyItMatters: 'Changes routing strategy and daily movement planning.',
-      },
-    ];
-
-    const merged = [...questions, ...fallback].slice(0, 3);
-
-    return { questions: merged };
   }
 
   async continueConversation(payload: ConversationDto) {
@@ -487,11 +476,17 @@ export class TripConversationService {
       '"how are you" → agentReply: "Doing well! More importantly — where are we going? Got somewhere in mind?"',
       '',
       'CONTEXT EXTRACTION RULE (critical):',
-      'Scan the ENTIRE conversation history AND the current utterance for ANY trip details — destination, duration, companions, budget, dates, interests.',
+      'Scan the ENTIRE conversation history AND the current utterance for ANY trip details — destination, duration, companions, budget, dates, interests, places, food preferences, activities.',
       'Example: "I want to go to Ibiza with friends for 2 weeks" → extract destination=Ibiza, companions.type=friends_small, duration.min=14, duration.max=14.',
       'Example: "just me and my partner" → companions.type=couple, companions.count=2.',
       'Example: "with a group of friends" → companions.type=friends_small.',
       'If the user provided multiple details, advance nextStep past all resolved fields to the first unresolved one.',
+      '',
+      'DO NOT ASK ABOUT THINGS ALREADY MENTIONED (critical):',
+      'Before generating agentReply, check the full conversation history and tripContext for everything the user has already told you.',
+      'If the user mentioned specific places (e.g. "Fontana di Trevi", "Saint Peters"), foods (e.g. "pasta", "gelato"), or activities — treat those as known interests. Do NOT ask about them again.',
+      'If dates, duration, companions, or budget are already in tripContext or were mentioned in conversation — skip those steps entirely.',
+      'The contextual step is for asking 1 genuinely unclear thing that would meaningfully change the itinerary. If nothing is unclear, skip straight to confirm.',
       '',
       'REPLY STYLE:',
       'Keep agentReply to 1-2 sentences max. Acknowledge what was captured, then ask the next missing thing naturally.',
@@ -842,7 +837,6 @@ Return JSON with this exact shape:
     }
 
     const model = GROQ_MODEL;
-    const theme = normalizeTheme(interests);
 
     const systemPrompt = [
       'You are a senior travel advisor creating highly personalized itineraries from a conversational profile.',
