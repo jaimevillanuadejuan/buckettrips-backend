@@ -7,7 +7,10 @@
   HttpStatus,
   Param,
   Post,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthGuard } from '../auth/auth.guard';
 import { ChatDto } from './dto/chat.dto';
 import { ConfirmTripDto } from './dto/confirm-trip.dto';
 import { ContextualQuestionsDto } from './dto/contextual-questions.dto';
@@ -25,6 +28,8 @@ export class TripsController {
     private readonly tripConversationService: TripConversationService,
   ) {}
 
+  // ── Conversational / AI endpoints (no auth required) ──────────────────────
+
   @Post('parse-intent')
   parseIntent(@Body() payload: ParseIntentDto) {
     return this.tripConversationService.parseIntent(payload.rawInput);
@@ -34,6 +39,7 @@ export class TripsController {
   contextualQuestions(@Body() payload: ContextualQuestionsDto) {
     return this.tripConversationService.generateContextualQuestions(
       payload.tripContext,
+      payload.conversationHistory,
     );
   }
 
@@ -57,24 +63,31 @@ export class TripsController {
     return this.tripConversationService.confirmTrip(payload);
   }
 
+  // ── CRUD endpoints (auth required) ────────────────────────────────────────
+
+  @UseGuards(AuthGuard)
   @Post()
-  create(@Body() payload: CreateTripDto) {
+  create(@Body() payload: CreateTripDto, @Req() req: { user: { profileId: string } }) {
+    payload.profileId = req.user.profileId;
     return this.tripsService.create(payload);
   }
 
+  @UseGuards(AuthGuard)
   @Get()
-  findAll() {
-    return this.tripsService.findAll();
+  findAll(@Req() req: { user: { profileId: string } }) {
+    return this.tripsService.findAll(req.user.profileId);
   }
 
+  @UseGuards(AuthGuard)
   @Get(':tripId')
-  findOne(@Param('tripId') tripId: string) {
-    return this.tripsService.findOne(tripId);
+  findOne(@Param('tripId') tripId: string, @Req() req: { user: { profileId: string } }) {
+    return this.tripsService.findOne(tripId, req.user.profileId);
   }
 
+  @UseGuards(AuthGuard)
   @Delete(':tripId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('tripId') tripId: string) {
-    await this.tripsService.remove(tripId);
+  async remove(@Param('tripId') tripId: string, @Req() req: { user: { profileId: string } }) {
+    await this.tripsService.remove(tripId, req.user.profileId);
   }
 }

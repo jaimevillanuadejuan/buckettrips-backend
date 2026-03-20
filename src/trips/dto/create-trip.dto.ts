@@ -1,6 +1,5 @@
 import {
   IsDateString,
-  IsIn,
   IsNotEmpty,
   IsObject,
   IsOptional,
@@ -8,6 +7,10 @@ import {
 } from 'class-validator';
 
 export class CreateTripDto {
+  @IsOptional()
+  @IsString()
+  profileId?: string;
+
   @IsString()
   @IsNotEmpty()
   location!: string;
@@ -17,10 +20,6 @@ export class CreateTripDto {
 
   @IsDateString()
   endDate!: string;
-
-  @IsString()
-  @IsIn(['nature', 'historic'])
-  theme!: string;
 
   @IsOptional()
   @IsString()

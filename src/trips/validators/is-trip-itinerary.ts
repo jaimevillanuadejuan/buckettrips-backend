@@ -30,7 +30,6 @@ export function isTripItinerary(value: unknown): boolean {
   if (
     typeof overview.destination !== 'string' ||
     typeof overview.travelWindow !== 'string' ||
-    typeof overview.theme !== 'string' ||
     typeof overview.planningStyle !== 'string' ||
     !isStringArray(overview.keyAssumptions)
   ) {

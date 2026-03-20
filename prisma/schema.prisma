@@ -8,18 +8,35 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model Profile {
+  id            String   @id @default(cuid())
+  oauthProvider String
+  oauthId       String
+  email         String   @unique
+  name          String?
+  avatarUrl     String?
+  trips         Trip[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([oauthProvider, oauthId])
+  @@index([email])
+}
+
 model Trip {
   id        String   @id @default(cuid())
   location  String
   startDate DateTime
   endDate   DateTime
-  theme     String
   provider  String?
   model     String?
   itinerary Json
+  profileId String
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([createdAt(sort: Desc)])
   @@index([location])
+  @@index([profileId])
 }
