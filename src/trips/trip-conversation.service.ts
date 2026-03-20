@@ -52,6 +52,8 @@ export interface ContextualQuestion {
 const DEFAULT_OPENROUTER_MODEL = 'openrouter/free';
 const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_TIMEOUT_MS = 20_000;
+const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const MAX_FOLLOW_UP_ANSWERS = 8;
 const CONVERSATION_STEPS: ConversationStep[] = [
   'destination',
@@ -459,12 +461,10 @@ export class TripConversationService {
   }
 
   async continueConversation(payload: ConversationDto) {
-    const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+    const apiKey = process.env.GROQ_API_KEY?.trim();
 
     if (!apiKey) {
-      throw new ServiceUnavailableException(
-        'Missing OPENROUTER_API_KEY server configuration',
-      );
+      throw new ServiceUnavailableException('Missing GROQ_API_KEY server configuration');
     }
 
     const step = isConversationStep(payload.currentStep)
@@ -545,17 +545,14 @@ Return JSON only with shape:
     const timeout = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS);
 
     try {
-      const openRouterRes = await fetch(OPENROUTER_ENDPOINT, {
+      const openRouterRes = await fetch(GROQ_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
-          'HTTP-Referer':
-            process.env.OPENROUTER_SITE_URL ?? 'http://localhost:3000',
-          'X-Title': process.env.OPENROUTER_APP_NAME ?? 'BucketTrips Backend',
         },
         body: JSON.stringify({
-          model: process.env.OPENROUTER_MODEL ?? DEFAULT_OPENROUTER_MODEL,
+          model: GROQ_MODEL,
           temperature: 0.35,
           messages: [
             { role: 'system', content: systemPrompt },
@@ -628,6 +625,164 @@ Return JSON only with shape:
     }
   }
 
+  async chat(payload: { message: string; history?: Array<{ role: 'user' | 'agent'; text: string }> }) {
+    const apiKey = process.env.GROQ_API_KEY?.trim();
+    if (!apiKey) {
+      throw new ServiceUnavailableException('Missing GROQ_API_KEY server configuration');
+    }
+
+    const systemPrompt = [
+      'You are a warm, knowledgeable travel companion — not a booking bot, not a corporate assistant.',
+      'You help people with anything travel-related: trip ideas, destination advice, itinerary consulting, packing, budgeting, visa questions, or just chatting about travel.',
+      'If the user greets you or makes small talk, respond like a real person — casual, warm, brief — then naturally bring up travel if it fits.',
+      'NEVER say "I hit a snag", "I apologize", "I\'m sorry but", "as an AI", "I\'m unable to", or any robotic phrase.',
+      'Small talk examples:',
+      '"hey" → "Hey! Got a trip on your mind, or just browsing?"',
+      '"how\'s it going" → "Pretty good! You planning something or just dreaming about it?"',
+      '"what can you do" → "Pretty much anything travel — where to go, when to go, what to pack, how to budget. What\'s on your mind?"',
+      'Keep replies concise — 2 to 4 sentences — unless the user asks for detail.',
+      'If the user wants to plan a full trip, guide them naturally: ask about destination, dates, who they\'re going with, and budget — one question at a time.',
+      'Never ask multiple questions in one reply.',
+    ].join(' ');
+
+    const historyLines = (payload.history ?? [])
+      .map((t) => `${t.role === 'user' ? 'User' : 'Agent'}: ${t.text}`)
+      .join('\n');
+
+    const userPrompt = historyLines
+      ? `Conversation so far:\n${historyLines}\n\nUser: ${payload.message}`
+      : `User: ${payload.message}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(GROQ_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          temperature: 0.7,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+
+      const json = (await res.json()) as OpenRouterErrorPayload | OpenRouterSuccessPayload;
+
+      if (!res.ok) {
+        const msg = 'error' in json && json.error?.message ? json.error.message : 'OpenRouter request failed';
+        throw new ServiceUnavailableException(`OpenRouter API error: ${msg}`);
+      }
+
+      let reply = extractOpenRouterText(json as OpenRouterSuccessPayload);
+
+      if (!reply || isRoboticReply(reply)) {
+        reply = naturalFallback(payload.message);
+      }
+
+      return { reply };
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException || error instanceof GatewayTimeoutException) throw error;
+      if (error instanceof Error && error.name === 'AbortError') throw new GatewayTimeoutException('Chat request timed out');
+      throw new ServiceUnavailableException('Failed to generate chat response');
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async refineTrip(payload: { itinerary: Record<string, unknown>; message: string; history?: Array<{ role: 'user' | 'agent'; text: string }> }) {
+    const apiKey = process.env.GROQ_API_KEY?.trim();
+    if (!apiKey) throw new ServiceUnavailableException('Missing GROQ_API_KEY server configuration');
+
+    const historyLines = (payload.history ?? [])
+      .map((t) => `${t.role === 'user' ? 'User' : 'Agent'}: ${t.text}`)
+      .join('\n');
+
+    const systemPrompt = [
+      'You are a warm travel advisor helping refine an existing trip itinerary based on user feedback.',
+      'The user will describe a change they want. You MUST return a JSON object with two keys: "reply" and "itinerary".',
+      '"reply" is a short, natural, conversational response (1-2 sentences) acknowledging what you changed — like a real person would say.',
+      '"itinerary" is the complete updated itinerary with the same JSON shape as the input. Only modify what the user asked to change.',
+      'Output valid JSON only — no markdown fences, no prose outside the JSON.',
+      'NEVER say "I hit a snag", "I apologize", "I\'m sorry", "as an AI", or any robotic phrase in the reply.',
+      'Example reply: "Done! Swapped Day 3 to focus on cenotes and jungle hikes — should be a great day."',
+      'Example reply: "Got it — moved the beach day to Day 5 and added a snorkeling session in the afternoon."',
+    ].join(' ');
+
+    const userPrompt = `Current itinerary:
+${JSON.stringify(payload.itinerary, null, 2)}
+
+${historyLines ? `Conversation so far:\n${historyLines}\n\n` : ''}User request: ${payload.message}
+
+Return JSON with this exact shape:
+{
+  "reply": "short natural confirmation of what changed",
+  "itinerary": { ...complete updated itinerary... }
+}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(GROQ_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          temperature: 0.35,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+
+      const json = (await res.json()) as OpenRouterErrorPayload | OpenRouterSuccessPayload;
+      if (!res.ok) {
+        const msg = 'error' in json && (json as OpenRouterErrorPayload).error?.message ? (json as OpenRouterErrorPayload).error!.message : 'Groq request failed';
+        throw new ServiceUnavailableException(`Groq API error: ${msg}`);
+      }
+
+      const rawText = extractOpenRouterText(json as OpenRouterSuccessPayload);
+      if (!rawText) throw new ServiceUnavailableException('No response from Groq');
+
+      const cleaned = stripCodeFence(rawText);
+      let result: unknown = cleaned;
+      try { result = JSON.parse(cleaned); } catch { /* keep string */ }
+
+      // Extract reply and itinerary from the structured response
+      let reply = 'Done! Your itinerary has been updated.';
+      let itinerary: unknown = result;
+
+      if (isObject(result)) {
+        if (typeof result.reply === 'string' && result.reply.trim()) {
+          reply = result.reply.trim();
+        }
+        if (result.itinerary !== undefined) {
+          itinerary = result.itinerary;
+        }
+      }
+
+      return { reply, itinerary };
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException || error instanceof GatewayTimeoutException) throw error;
+      if (error instanceof Error && error.name === 'AbortError') throw new GatewayTimeoutException('Refine request timed out');
+      throw new ServiceUnavailableException('Failed to refine itinerary');
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async confirmTrip(payload: ConfirmTripDto) {
     const startDate = payload.exactStartDate.trim();
     const endDate = payload.exactEndDate.trim();
@@ -672,7 +827,7 @@ Return JSON only with shape:
       'contextual_answers',
     ]);
     const contextualAnswers = contextualAnswersObject
-      ? Object.entries(contextualAnswersObject)
+      ? Object.entries(contextualAnswersObject as Record<string, unknown>)
           .map(([key, value]) => `${key}: ${String(value)}`)
           .join('; ')
       : 'none yet';
@@ -680,15 +835,13 @@ Return JSON only with shape:
     const seasonalPreference =
       getPathString(context, ['travel_dates', 'season']) || 'flexible';
 
-    const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+    const apiKey = process.env.GROQ_API_KEY?.trim();
 
     if (!apiKey) {
-      throw new ServiceUnavailableException(
-        'Missing OPENROUTER_API_KEY server configuration',
-      );
+      throw new ServiceUnavailableException('Missing GROQ_API_KEY server configuration');
     }
 
-    const model = process.env.OPENROUTER_MODEL ?? DEFAULT_OPENROUTER_MODEL;
+    const model = GROQ_MODEL;
     const theme = normalizeTheme(interests);
 
     const systemPrompt = [
@@ -701,7 +854,6 @@ Return JSON only with shape:
 - Destination focus: ${destination}
 - Exact dates: ${startDate} to ${endDate}
 - Trip length: ${tripDays} day(s)
-- Theme mapping: ${theme}
 - Companions: ${companionsType}
 - Budget tier: ${budgetTier}
 - Seasonal preference: ${seasonalPreference}
@@ -725,7 +877,6 @@ Return this exact JSON shape:
   "tripOverview": {
     "destination": "string",
     "travelWindow": "string",
-    "theme": "nature | historic",
     "planningStyle": "string",
     "keyAssumptions": ["string"]
   },
@@ -760,14 +911,11 @@ Return this exact JSON shape:
     const timeout = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS);
 
     try {
-      const openRouterRes = await fetch(OPENROUTER_ENDPOINT, {
+      const openRouterRes = await fetch(GROQ_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
-          'HTTP-Referer':
-            process.env.OPENROUTER_SITE_URL ?? 'http://localhost:3000',
-          'X-Title': process.env.OPENROUTER_APP_NAME ?? 'BucketTrips Backend',
         },
         body: JSON.stringify({
           model,
@@ -787,9 +935,9 @@ Return this exact JSON shape:
 
       if (!openRouterRes.ok) {
         const errorMessage =
-          'error' in openRouterJson && openRouterJson.error?.message
-            ? openRouterJson.error.message
-            : 'OpenRouter request failed';
+          'error' in openRouterJson && (openRouterJson as OpenRouterErrorPayload).error?.message
+            ? (openRouterJson as OpenRouterErrorPayload).error!.message
+            : 'Groq request failed';
 
         if (openRouterRes.status === 408 || openRouterRes.status === 504) {
           throw new GatewayTimeoutException(
