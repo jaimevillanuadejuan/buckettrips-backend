@@ -8,11 +8,13 @@
   Param,
   Post,
 } from '@nestjs/common';
+import { ChatDto } from './dto/chat.dto';
 import { ConfirmTripDto } from './dto/confirm-trip.dto';
 import { ContextualQuestionsDto } from './dto/contextual-questions.dto';
 import { ConversationDto } from './dto/conversation.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { ParseIntentDto } from './dto/parse-intent.dto';
+import { RefineTripDto } from './dto/refine-trip.dto';
 import { TripConversationService } from './trip-conversation.service';
 import { TripsService } from './trips.service';
 
@@ -38,6 +40,16 @@ export class TripsController {
   @Post('conversation')
   conversation(@Body() payload: ConversationDto) {
     return this.tripConversationService.continueConversation(payload);
+  }
+
+  @Post('chat')
+  chat(@Body() payload: ChatDto) {
+    return this.tripConversationService.chat(payload);
+  }
+
+  @Post('refine')
+  refine(@Body() payload: RefineTripDto) {
+    return this.tripConversationService.refineTrip(payload);
   }
 
   @Post('confirm')
