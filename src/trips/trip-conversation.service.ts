@@ -488,9 +488,29 @@ Return 1-3 questions max. If nothing meaningful is missing, return an empty arra
       'If dates, duration, companions, or budget are already in tripContext or were mentioned in conversation — skip those steps entirely.',
       'The contextual step is for asking 1 genuinely unclear thing that would meaningfully change the itinerary. If nothing is unclear, skip straight to confirm.',
       '',
+      'REQUIRED CHECKLIST — you must collect ALL of these before moving to confirm:',
+      '[ ] destination — resolved_region or raw_input is set',
+      '[ ] exact_start — a real calendar date in YYYY-MM-DD format',
+      '[ ] exact_end — a real calendar date in YYYY-MM-DD format',
+      '[ ] companions — type is known (solo / couple / friends_small / friends_group / family_with_kids)',
+      '[ ] budget — tier is known (shoestring / thoughtful / comfortable / premium / no_limit)',
+      'If ANY item is unchecked, stay on the appropriate step and ask for it. Do NOT advance to confirm.',
+      '',
+      'DATE CALCULATION RULE:',
+      'If the user describes dates in natural language (e.g. "first Saturday of October", "next weekend", "two weeks from now"), calculate the actual YYYY-MM-DD dates yourself and confirm them with the user before setting exact_start/exact_end.',
+      'Do NOT ask the user to provide the exact dates themselves if you can calculate them. Just say "So that would be [date] to [date] — does that work?" and set the dates in tripContextUpdates.',
+      '',
+      'CONFIRM STEP RULES (critical — read carefully):',
+      'You may ONLY set nextStep to "confirm" when ALL five checklist items above are satisfied.',
+      'NEVER set nextStep to "confirm" just because the user said something that sounds like agreement, a calculation request, or a vague go-ahead.',
+      'Examples that must NOT trigger confirm: "make the calculations", "sounds good", "sure", "ok", "that works", "yes", "great".',
+      'The confirm step means: all required info is collected AND the user has explicitly said they want to generate the itinerary.',
+      'Explicit confirm phrases: "let\'s go", "plan it", "yes go ahead", "build the itinerary", "generate it", "do it", "create the trip", "start planning", "make the trip".',
+      'If the user says something ambiguous, stay on the current step and ask the next missing question.',
+      '',
       'REPLY STYLE:',
       'Keep agentReply to 1-2 sentences max. Acknowledge what was captured, then ask the next missing thing naturally.',
-      'When you reach confirm step, ask for exact start/end dates in YYYY-MM-DD and set travel_dates.exact_start/exact_end when given.',
+      'When asking for dates, calculate them if possible and confirm with the user.',
       '',
       'Allowed enum values —',
       'companions.type: solo | couple | friends_small | friends_group | family_with_kids | work_trip',
@@ -706,6 +726,7 @@ Return JSON only with shape:
       'The user will describe a change they want. You MUST return a JSON object with two keys: "reply" and "itinerary".',
       '"reply" is a short, natural, conversational response (1-2 sentences) acknowledging what you changed — like a real person would say.',
       '"itinerary" is the complete updated itinerary with the same JSON shape as the input. Only modify what the user asked to change.',
+      'CURRENCY RULE: Preserve the currencyCode and currencySymbol from the input itinerary. All budget figures must stay in the same currency as the original.',
       'Output valid JSON only — no markdown fences, no prose outside the JSON.',
       'NEVER say "I hit a snag", "I apologize", "I\'m sorry", "as an AI", or any robotic phrase in the reply.',
       'Example reply: "Done! Swapped Day 3 to focus on cenotes and jungle hikes — should be a great day."',
@@ -842,6 +863,10 @@ Return JSON with this exact shape:
       'You are a senior travel advisor creating highly personalized itineraries from a conversational profile.',
       'Output valid JSON only. No markdown fences, no additional prose.',
       "Prioritize realistic timing, budget awareness, and the user's stated exclusions.",
+      'CURRENCY RULE: All budget figures MUST be in the official local currency of the destination country.',
+      'Examples: Japan → JPY, USA → USD, UK → GBP, Mexico → MXN, Thailand → THB, Australia → AUD, Brazil → BRL.',
+      'Always include currencyCode (ISO 4217, e.g. "JPY") and currencySymbol (e.g. "¥") in tripOverview.',
+      'If the user mentioned a budget in their own currency (e.g. "$2000"), convert it to the destination currency and use that as the budget ceiling.',
     ].join(' ');
 
     const userPrompt = `Build a full itinerary from this conversational profile:
@@ -863,8 +888,9 @@ Requirements:
 1) Return day-by-day morning/afternoon/evening plans.
 2) Respect exclusions (avoid crowded/trap-like suggestions if requested).
 3) Keep logistics realistic and budget-conscious.
-4) Add reservation alerts and transport notes.
-5) Include 3-5 updated follow-up questions.
+4) All budget numbers must be in the destination's local currency.
+5) Add reservation alerts and transport notes.
+6) Include 3-5 updated follow-up questions.
 
 Return this exact JSON shape:
 {
@@ -872,6 +898,8 @@ Return this exact JSON shape:
     "destination": "string",
     "travelWindow": "string",
     "planningStyle": "string",
+    "currencyCode": "ISO 4217 code e.g. JPY",
+    "currencySymbol": "e.g. ¥",
     "keyAssumptions": ["string"]
   },
   "dailyItinerary": [
@@ -882,13 +910,13 @@ Return this exact JSON shape:
       "morning": ["string"],
       "afternoon": ["string"],
       "evening": ["string"],
-      "estimatedBudgetEur": { "low": 0, "high": 0 },
+      "estimatedBudget": { "low": 0, "high": 0 },
       "budgetTips": ["string"],
       "logisticsNotes": ["string"],
       "reservationAlerts": ["string"]
     }
   ],
-  "overallBudgetEstimateEur": {
+  "overallBudgetEstimate": {
     "low": 0,
     "high": 0,
     "notes": ["string"]
