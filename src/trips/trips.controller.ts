@@ -6,6 +6,7 @@
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -82,6 +83,16 @@ export class TripsController {
   @Get(':tripId')
   findOne(@Param('tripId') tripId: string, @Req() req: { user: { profileId: string } }) {
     return this.tripsService.findOne(tripId, req.user.profileId);
+  }
+
+  @UseGuards(AuthGuard)
+  @Patch(':tripId')
+  updateItinerary(
+    @Param('tripId') tripId: string,
+    @Body() body: { itinerary: Record<string, unknown> },
+    @Req() req: { user: { profileId: string } },
+  ) {
+    return this.tripsService.updateItinerary(tripId, req.user.profileId, body.itinerary);
   }
 
   @UseGuards(AuthGuard)
