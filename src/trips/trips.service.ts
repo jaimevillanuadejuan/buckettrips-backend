@@ -66,6 +66,22 @@ export class TripsService {
     return trip;
   }
 
+  async updateItinerary(id: string, profileId: string, itinerary: Record<string, unknown>) {
+    const trip = await this.prisma.trip.findUnique({ where: { id }, select: { id: true, profileId: true } });
+    if (!trip) throw new NotFoundException('Trip not found');
+    if (trip.profileId !== profileId) throw new ForbiddenException();
+
+    if (!isTripItinerary(itinerary)) {
+      throw new BadRequestException('Invalid itinerary payload format');
+    }
+
+    return this.prisma.trip.update({
+      where: { id },
+      data: { itinerary: itinerary as Prisma.InputJsonValue },
+      select: { id: true, updatedAt: true },
+    });
+  }
+
   async remove(id: string, profileId: string) {
     const trip = await this.prisma.trip.findUnique({
       where: { id },
