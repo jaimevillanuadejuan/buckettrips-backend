@@ -15,4 +15,8 @@ export class ConversationDto {
   @IsOptional()
   @IsArray()
   conversationHistory?: Array<{ role: 'user' | 'agent'; text: string }>;
+
+  @IsOptional()
+  @IsString()
+  detectedOriginCity?: string;
 }
