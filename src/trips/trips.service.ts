@@ -4,7 +4,6 @@
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { isTripItinerary } from './validators/is-trip-itinerary';
@@ -35,7 +34,7 @@ export class TripsService {
         endDate,
         provider: payload.provider?.trim() || null,
         model: payload.model?.trim() || null,
-        itinerary: payload.itinerary as Prisma.InputJsonValue,
+        itinerary: payload.itinerary as unknown,
       },
       select: { id: true, createdAt: true },
     });
@@ -77,7 +76,7 @@ export class TripsService {
 
     return this.prisma.trip.update({
       where: { id },
-      data: { itinerary: itinerary as Prisma.InputJsonValue },
+      data: { itinerary: itinerary as unknown },
       select: { id: true, updatedAt: true },
     });
   }
