@@ -4,6 +4,7 @@
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { isTripItinerary } from './validators/is-trip-itinerary';
@@ -12,7 +13,7 @@ import { isTripItinerary } from './validators/is-trip-itinerary';
 export class TripsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(payload: CreateTripDto) {
+  async create(payload: CreateTripDto, clientIp?: string) {
     if (!isTripItinerary(payload.itinerary)) {
       throw new BadRequestException('Invalid itinerary payload format');
     }
@@ -26,6 +27,29 @@ export class TripsService {
       );
     }
 
+    // Detect and store preferred currency on first trip if not already set
+    const profile = await this.prisma.profile.findUnique({
+      where: { id: payload.profileId! },
+      select: { preferredCurrency: true },
+    });
+
+    if (!profile?.preferredCurrency && clientIp) {
+      try {
+        const geoRes = await fetch(`https://ipapi.co/${clientIp}/json/`, { cache: 'no-store' });
+        if (geoRes.ok) {
+          const geo = (await geoRes.json()) as { currency?: string };
+          if (geo.currency) {
+            await this.prisma.profile.update({
+              where: { id: payload.profileId! },
+              data: { preferredCurrency: geo.currency },
+            });
+          }
+        }
+      } catch {
+        // silently ignore — not critical
+      }
+    }
+
     return this.prisma.trip.create({
       data: {
         profileId: payload.profileId!,
@@ -34,7 +58,15 @@ export class TripsService {
         endDate,
         provider: payload.provider?.trim() || null,
         model: payload.model?.trim() || null,
-        itinerary: payload.itinerary as unknown,
+        itinerary: (payload.itinerary ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        originCity: payload.originCity ?? null,
+        flightBudget: payload.flightBudget
+          ? (payload.flightBudget as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+        accommodationBudget: payload.accommodationBudget
+          ? (payload.accommodationBudget as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+        accommodationType: payload.accommodationType ?? null,
       },
       select: { id: true, createdAt: true },
     });
@@ -76,7 +108,7 @@ export class TripsService {
 
     return this.prisma.trip.update({
       where: { id },
-      data: { itinerary: itinerary as unknown },
+      data: { itinerary: (itinerary ?? Prisma.JsonNull) as Prisma.InputJsonValue },
       select: { id: true, updatedAt: true },
     });
   }

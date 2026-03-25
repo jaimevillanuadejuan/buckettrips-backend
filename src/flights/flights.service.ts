@@ -82,7 +82,7 @@ export class FlightsService {
       url.searchParams.set('api_key', this.serpApiKey);
       url.searchParams.set('q', query);
       url.searchParams.set('hl', 'en');
-      url.searchParams.set('gl', 'us');
+      url.searchParams.set('gl', 'es');
 
       const res = await fetch(url.toString(), { cache: 'no-store' });
       if (!res.ok) {
@@ -157,7 +157,7 @@ export class FlightsService {
     url.searchParams.set('adults', String(params.adults ?? 1));
     url.searchParams.set('currency', params.currency ?? 'USD');
     url.searchParams.set('hl', 'en');
-    url.searchParams.set('gl', 'us');
+    url.searchParams.set('gl', 'es');
 
     const res = await fetch(url.toString(), { cache: 'no-store' });
     console.log('[flights] SerpApi URL:', url.toString().replace(this.serpApiKey, 'REDACTED'));
@@ -172,6 +172,53 @@ export class FlightsService {
     const json = (await res.json()) as SerpFlightsResponse;
     if (json.error) {
       console.error('[flights] SerpApi error:', json.error);
+      // If no results and destination looks like a country code, retry with capital city
+      if (json.error.includes('no results') || json.error.includes("hasn't returned")) {
+        console.log('[flights] Retrying with Mexico City as fallback destination');
+        const fallbackMap: Record<string, string> = {
+          MEX: 'Mexico City',
+          THA: 'Bangkok',
+          IND: 'Delhi',
+          CHN: 'Beijing',
+          BRA: 'Sao Paulo',
+          ARG: 'Buenos Aires',
+          COL: 'Bogota',
+          PER: 'Lima',
+          CHL: 'Santiago',
+        };
+        const fallback = fallbackMap[destinationId];
+        if (fallback) {
+          const fallbackId = await this.resolveToIata(fallback);
+          if (fallbackId !== destinationId) {
+            url.searchParams.set('arrival_id', fallbackId);
+            const retryRes = await fetch(url.toString(), { cache: 'no-store' });
+            const retryJson = (await retryRes.json()) as SerpFlightsResponse;
+            if (!retryJson.error) {
+              const retryOptions = [...(retryJson.best_flights ?? []), ...(retryJson.other_flights ?? [])];
+              const retryGoogleUrl = retryJson.search_metadata?.google_flights_url ?? '';
+              const retryCurrency = params.currency ?? 'USD';
+              return retryOptions.slice(0, 5).map((option): FlightResult | null => {
+                const firstLeg = option.flights?.[0];
+                if (!firstLeg) return null;
+                const price = option.price ?? 0;
+                if (params.budget && price > params.budget) return null;
+                const lastLeg = option.flights?.[option.flights.length - 1];
+                return {
+                  airline: firstLeg.airline ?? 'Unknown airline',
+                  airlineLogo: firstLeg.airline_logo ?? option.airline_logo ?? '',
+                  price,
+                  currency: retryCurrency,
+                  departureTime: firstLeg.departure_airport?.time ?? '',
+                  arrivalTime: lastLeg?.arrival_airport?.time ?? '',
+                  duration: this.formatDuration(option.total_duration ?? 0),
+                  stops: (option.flights?.length ?? 1) - 1,
+                  deepLinkUrl: retryGoogleUrl,
+                };
+              }).filter((r): r is FlightResult => r !== null);
+            }
+          }
+        }
+      }
       return [];
     }
 

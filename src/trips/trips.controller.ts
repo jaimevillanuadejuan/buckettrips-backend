@@ -11,6 +11,7 @@
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { AuthGuard } from '../auth/auth.guard';
 import { ChatDto } from './dto/chat.dto';
 import { ConfirmTripDto } from './dto/confirm-trip.dto';
@@ -68,9 +69,12 @@ export class TripsController {
 
   @UseGuards(AuthGuard)
   @Post()
-  create(@Body() payload: CreateTripDto, @Req() req: { user: { profileId: string } }) {
+  create(@Body() payload: CreateTripDto, @Req() req: Request & { user: { profileId: string } }) {
     payload.profileId = req.user.profileId;
-    return this.tripsService.create(payload);
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+      ?? req.socket?.remoteAddress
+      ?? undefined;
+    return this.tripsService.create(payload, clientIp);
   }
 
   @UseGuards(AuthGuard)

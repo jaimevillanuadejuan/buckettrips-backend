@@ -36,7 +36,7 @@ export class HotelsService {
     budget?: number;
     currency?: string;
   }): Promise<HotelResult[]> {
-    const apiKey = process.env.SERPAPI_API_KEY?.trim();
+    const apiKey = process.env.SERP_API_KEY?.trim();
     if (!apiKey) {
       throw new ServiceUnavailableException('Missing SERPAPI_API_KEY configuration');
     }
@@ -67,21 +67,27 @@ export class HotelsService {
 
     const properties = data.properties ?? [];
 
-    return properties.map((p): HotelResult => {
-      const stars =
-        p.hotel_class != null ? Number(p.hotel_class) : null;
+    return properties
+      .filter((p) => parsePriceString(p.rate_per_night?.lowest) !== null)
+      .slice(0, 8)
+      .map((p): HotelResult => {
+        const stars = p.hotel_class != null ? Number(p.hotel_class) : null;
+        const name = p.name ?? 'Unknown Hotel';
 
-      return {
-        name: p.name ?? 'Unknown Hotel',
-        stars: Number.isFinite(stars) ? stars : null,
-        overallRating: p.overall_rating ?? null,
-        reviews: p.reviews ?? null,
-        pricePerNight: parsePriceString(p.rate_per_night?.lowest),
-        currency,
-        thumbnailUrl: p.thumbnail ?? null,
-        deepLinkUrl: p.link ?? null,
-        amenities: p.amenities ?? [],
-      };
-    });
+        // Always use Google Hotels search link — SerpApi's `link` is the hotel's own site
+        const googleHotelsUrl = `https://www.google.com/travel/hotels?q=${encodeURIComponent(name + ' ' + params.destination)}`;
+
+        return {
+          name,
+          stars: Number.isFinite(stars) ? stars : null,
+          overallRating: p.overall_rating ?? null,
+          reviews: p.reviews ?? null,
+          pricePerNight: parsePriceString(p.rate_per_night?.lowest),
+          currency,
+          thumbnailUrl: p.thumbnail ?? null,
+          deepLinkUrl: googleHotelsUrl,
+          amenities: p.amenities ?? [],
+        };
+      });
   }
 }
