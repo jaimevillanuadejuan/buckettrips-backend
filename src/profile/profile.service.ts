@@ -7,6 +7,7 @@ export interface UpsertProfileDto {
   email: string;
   name?: string;
   avatarUrl?: string;
+  preferredCurrency?: string | null;
 }
 
 @Injectable()
@@ -22,11 +23,30 @@ export class ProfileService {
         email: dto.email,
         name: dto.name,
         avatarUrl: dto.avatarUrl,
+        preferredCurrency: dto.preferredCurrency ?? null,
       },
       update: {
         updatedAt: new Date(),
+        // Only set preferredCurrency if not already set
+        ...(dto.preferredCurrency ? { preferredCurrency: dto.preferredCurrency } : {}),
       },
-      select: { id: true, email: true, name: true, avatarUrl: true },
+      select: { id: true, email: true, name: true, avatarUrl: true, preferredCurrency: true },
     });
+  }
+
+  async getPreferredCurrency(profileId: string): Promise<string | null> {
+    const profile = await this.prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { preferredCurrency: true },
+    });
+    return profile?.preferredCurrency?.trim() ?? null;
+  }
+
+  async setPreferredCurrency(profileId: string, currency: string) {
+    await this.prisma.profile.update({
+      where: { id: profileId },
+      data: { preferredCurrency: currency },
+    });
+    return { ok: true };
   }
 }

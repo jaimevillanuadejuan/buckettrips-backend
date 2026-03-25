@@ -31,4 +31,20 @@ export class CreateTripDto {
 
   @IsObject()
   itinerary!: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  originCity?: string;
+
+  @IsOptional()
+  @IsObject()
+  flightBudget?: { amount: number; currency: string };
+
+  @IsOptional()
+  @IsObject()
+  accommodationBudget?: { amount: number; currency: string };
+
+  @IsOptional()
+  @IsString()
+  accommodationType?: string;
 }

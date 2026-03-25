@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { FlightsModule } from './flights/flights.module';
+import { HotelsModule } from './hotels/hotels.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProfileModule } from './profile/profile.module';
 import { TripsModule } from './trips/trips.module';
@@ -18,6 +19,7 @@ import { TripsModule } from './trips/trips.module';
     TripsModule,
     AccommodationsModule,
     FlightsModule,
+    HotelsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
