@@ -7,9 +7,10 @@ RUN npm ci
 
 COPY . .
 
+RUN npx prisma generate
 RUN npm run build
 
 EXPOSE 8080
 
-# Sync Prisma schema to the DB on startup, then run the API.
-CMD ["sh", "-c", "npx prisma db push && node dist/main.js"]
+# Apply migrations on startup, then run the API.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
