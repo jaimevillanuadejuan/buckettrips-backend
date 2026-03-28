@@ -13,4 +13,4 @@ RUN npm run build
 EXPOSE 8080
 
 # Apply migrations on startup, then run the API.
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/main.js"]
