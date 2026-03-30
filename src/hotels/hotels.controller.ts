@@ -15,7 +15,9 @@ export class HotelsController {
     @Query('currency') currency?: string,
   ) {
     if (!destination || !checkIn || !checkOut) {
-      throw new BadRequestException('destination, checkIn, and checkOut are required');
+      throw new BadRequestException(
+        'destination, checkIn, and checkOut are required',
+      );
     }
 
     return this.hotelsService.searchHotels({

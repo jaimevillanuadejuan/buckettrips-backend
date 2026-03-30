@@ -16,7 +16,12 @@ export class ProfileService {
 
   async upsert(dto: UpsertProfileDto) {
     return this.prisma.profile.upsert({
-      where: { oauthProvider_oauthId: { oauthProvider: dto.oauthProvider, oauthId: dto.oauthId } },
+      where: {
+        oauthProvider_oauthId: {
+          oauthProvider: dto.oauthProvider,
+          oauthId: dto.oauthId,
+        },
+      },
       create: {
         oauthProvider: dto.oauthProvider,
         oauthId: dto.oauthId,
@@ -28,9 +33,17 @@ export class ProfileService {
       update: {
         updatedAt: new Date(),
         // Only set preferredCurrency if not already set
-        ...(dto.preferredCurrency ? { preferredCurrency: dto.preferredCurrency } : {}),
+        ...(dto.preferredCurrency
+          ? { preferredCurrency: dto.preferredCurrency }
+          : {}),
       },
-      select: { id: true, email: true, name: true, avatarUrl: true, preferredCurrency: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatarUrl: true,
+        preferredCurrency: true,
+      },
     });
   }
 

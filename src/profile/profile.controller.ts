@@ -1,4 +1,13 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import type { UpsertProfileDto } from './profile.service';
 import { ProfileService } from './profile.service';
@@ -16,7 +25,9 @@ export class ProfileController {
   @UseGuards(AuthGuard)
   @Get('me')
   async getMe(@Req() req: { user: { profileId: string } }) {
-    const currency = await this.profileService.getPreferredCurrency(req.user.profileId);
+    const currency = await this.profileService.getPreferredCurrency(
+      req.user.profileId,
+    );
     return { preferredCurrency: currency };
   }
 
@@ -26,6 +37,9 @@ export class ProfileController {
     @Body() body: { currency: string },
     @Req() req: { user: { profileId: string } },
   ) {
-    return this.profileService.setPreferredCurrency(req.user.profileId, body.currency);
+    return this.profileService.setPreferredCurrency(
+      req.user.profileId,
+      body.currency,
+    );
   }
 }
