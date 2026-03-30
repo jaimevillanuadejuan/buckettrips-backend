@@ -8,6 +8,11 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum TripScope {
+  CITY
+  COUNTRY
+}
+
 model Profile {
   id                String   @id @default(cuid())
   oauthProvider     String
@@ -39,9 +44,52 @@ model Trip {
   accommodationType   String?
   flightBudget        Json?
   originCity          String?
+  scope               TripScope @default(CITY)
+  countryCode         String?
+  routeGeoJson        Json?
   profile             Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  destinations        TripDestination[]
+  legs                TripLeg[]
 
   @@index([createdAt(sort: Desc)])
   @@index([location])
   @@index([profileId])
+  @@index([scope, countryCode])
+}
+
+model TripDestination {
+  id                   String   @id @default(cuid())
+  tripId                String
+  stopOrder             Int
+  cityName              String
+  countryCode           String
+  latitude              Float
+  longitude             Float
+  startDate             DateTime?
+  endDate               DateTime?
+  nights                Int?
+  selectedHotelSnapshot Json?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  trip                  Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, stopOrder])
+  @@index([tripId])
+}
+
+model TripLeg {
+  id                     String   @id @default(cuid())
+  tripId                  String
+  legOrder                Int
+  fromStopOrder           Int
+  toStopOrder             Int
+  mode                    String   @default("flight")
+  departureDate           DateTime?
+  selectedFlightSnapshot  Json?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  trip                    Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, legOrder])
+  @@index([tripId])
 }

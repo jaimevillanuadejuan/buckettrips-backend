@@ -38,7 +38,9 @@ export class HotelsService {
   }): Promise<HotelResult[]> {
     const apiKey = process.env.SERP_API_KEY?.trim();
     if (!apiKey) {
-      throw new ServiceUnavailableException('Missing SERPAPI_API_KEY configuration');
+      throw new ServiceUnavailableException(
+        'Missing SERPAPI_API_KEY configuration',
+      );
     }
 
     const currency = params.currency ?? 'USD';

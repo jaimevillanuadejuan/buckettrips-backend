@@ -69,11 +69,15 @@ export class TripsController {
 
   @UseGuards(AuthGuard)
   @Post()
-  create(@Body() payload: CreateTripDto, @Req() req: Request & { user: { profileId: string } }) {
+  create(
+    @Body() payload: CreateTripDto,
+    @Req() req: Request & { user: { profileId: string } },
+  ) {
     payload.profileId = req.user.profileId;
-    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-      ?? req.socket?.remoteAddress
-      ?? undefined;
+    const clientIp =
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ??
+      req.socket?.remoteAddress ??
+      undefined;
     return this.tripsService.create(payload, clientIp);
   }
 
@@ -85,7 +89,10 @@ export class TripsController {
 
   @UseGuards(AuthGuard)
   @Get(':tripId')
-  findOne(@Param('tripId') tripId: string, @Req() req: { user: { profileId: string } }) {
+  findOne(
+    @Param('tripId') tripId: string,
+    @Req() req: { user: { profileId: string } },
+  ) {
     return this.tripsService.findOne(tripId, req.user.profileId);
   }
 
@@ -96,13 +103,20 @@ export class TripsController {
     @Body() body: { itinerary: Record<string, unknown> },
     @Req() req: { user: { profileId: string } },
   ) {
-    return this.tripsService.updateItinerary(tripId, req.user.profileId, body.itinerary);
+    return this.tripsService.updateItinerary(
+      tripId,
+      req.user.profileId,
+      body.itinerary,
+    );
   }
 
   @UseGuards(AuthGuard)
   @Delete(':tripId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('tripId') tripId: string, @Req() req: { user: { profileId: string } }) {
+  async remove(
+    @Param('tripId') tripId: string,
+    @Req() req: { user: { profileId: string } },
+  ) {
     await this.tripsService.remove(tripId, req.user.profileId);
   }
 }

@@ -12,20 +12,19 @@ function isStringArray(value: unknown): value is string[] {
 function findBudgetField(day: Record<string, unknown>): unknown {
   if (isObject(day.estimatedBudget)) return day.estimatedBudget;
   if (isObject(day.estimatedBudgetEur)) return day.estimatedBudgetEur;
-  const entry = Object.entries(day).find(
-    ([k]) => k.toLowerCase().startsWith('estimatedbudget'),
+  const entry = Object.entries(day).find(([k]) =>
+    k.toLowerCase().startsWith('estimatedbudget'),
   );
   return entry ? entry[1] : undefined;
 }
 
 /** Find the overall budget object regardless of currency suffix */
-function findOverallBudgetField(
-  value: Record<string, unknown>,
-): unknown {
+function findOverallBudgetField(value: Record<string, unknown>): unknown {
   if (isObject(value.overallBudgetEstimate)) return value.overallBudgetEstimate;
-  if (isObject(value.overallBudgetEstimateEur)) return value.overallBudgetEstimateEur;
-  const entry = Object.entries(value).find(
-    ([k]) => k.toLowerCase().startsWith('overallbudgetestimate'),
+  if (isObject(value.overallBudgetEstimateEur))
+    return value.overallBudgetEstimateEur;
+  const entry = Object.entries(value).find(([k]) =>
+    k.toLowerCase().startsWith('overallbudgetestimate'),
   );
   return entry ? entry[1] : undefined;
 }

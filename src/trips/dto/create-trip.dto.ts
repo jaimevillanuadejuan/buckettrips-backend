@@ -1,10 +1,33 @@
 import {
+  IsArray,
   IsDateString,
   IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
+  ValidateIf,
 } from 'class-validator';
+
+interface TripDestinationInput {
+  stopOrder: number;
+  cityName: string;
+  countryCode: string;
+  latitude: number;
+  longitude: number;
+  startDate?: string | null;
+  endDate?: string | null;
+  nights?: number | null;
+  selectedHotelSnapshot?: Record<string, unknown> | null;
+}
+
+interface TripLegInput {
+  legOrder: number;
+  fromStopOrder: number;
+  toStopOrder: number;
+  mode?: string | null;
+  departureDate?: string | null;
+  selectedFlightSnapshot?: Record<string, unknown> | null;
+}
 
 export class CreateTripDto {
   @IsOptional()
@@ -47,4 +70,25 @@ export class CreateTripDto {
   @IsOptional()
   @IsString()
   accommodationType?: string;
+
+  @IsOptional()
+  @IsString()
+  scope?: 'CITY' | 'COUNTRY';
+
+  @ValidateIf((o: CreateTripDto) => o.scope === 'COUNTRY')
+  @IsOptional()
+  @IsString()
+  countryCode?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  routeGeoJson?: Record<string, unknown> | null;
+
+  @IsOptional()
+  @IsArray()
+  destinations?: TripDestinationInput[];
+
+  @IsOptional()
+  @IsArray()
+  legs?: TripLegInput[];
 }
